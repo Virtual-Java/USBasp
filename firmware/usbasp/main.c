@@ -13,6 +13,8 @@
  * open -> software set speed (default is 375kHz SCK)
  */
 
+#define AVR_SPI_SPEED_SEARCH
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
@@ -25,6 +27,8 @@
 #include "tpi.h"
 #include "tpi_defs.h"
 #include "uart.h"
+#include "i2c.h"
+#include "microwire.h"
 
 static uchar replyBuffer[8];
 
@@ -39,10 +43,16 @@ static uchar prog_blockflags;
 static uchar prog_pagecounter;
 
 #include <util/delay.h>
+static uchar spi_cs_hi = 1;
+static uchar mw_cs_lo = 1;
+static uchar mw_bitnum = 0;
+static uchar i2c_stop_aw = 0;
+
+
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 
 	usbMsgLen_t len = 0;
-
+	
 	if (data[1] == USBASP_FUNC_CONNECT) {
 		uart_disable(); // make it not interfere.
 
@@ -59,6 +69,103 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 		ledRedOn();
 		ispConnect();
 
+								
+//spi --------------------------------------------------------------
+	} else if (data[1] == USBASP_FUNC_SPI_CONNECT) {
+		/* set SCK speed */
+		if ((PINC & (1 << PC2)) == 0) {
+			ispSetSCKOption(USBASP_ISP_SCK_8);
+		} else {
+			ispSetSCKOption(prog_sck);
+		}
+
+		ledRedOn();
+		isp25Connect();
+			
+	} else if (data[1] == USBASP_FUNC_SPI_READ) {
+		CS_LOW();
+		spi_cs_hi = data[2]; //
+		prog_nbytes = (data[7] << 8) | data[6]; //Длинна буфера данных
+		prog_state = PROG_STATE_SPI_READ;
+		len = USB_NO_MSG;
+		
+	} else if (data[1] == USBASP_FUNC_SPI_WRITE) {
+		CS_LOW();
+		spi_cs_hi = data[2]; //
+		prog_nbytes = (data[7] << 8) | data[6]; //Длинна буфера данных
+		prog_state = PROG_STATE_SPI_WRITE;
+		len = USB_NO_MSG;
+
+//i2c 24xx ---------------------------------------------------------			
+
+	} else if (data[1] == USBASP_FUNC_I2C_INIT) {
+	
+		ledRedOn();
+		i2c_init();
+		
+	} else if (data[1] == USBASP_FUNC_I2C_START) {
+		i2c_start();
+		
+	} else if (data[1] == USBASP_FUNC_I2C_STOP) {
+		i2c_stop();
+		
+	} else if (data[1] == USBASP_FUNC_I2C_WRITEBYTE) {
+		replyBuffer[0] = i2c_send_byte(data[2]);
+		len = 1;
+		
+	} else if (data[1] == USBASP_FUNC_I2C_READBYTE) {
+		replyBuffer[0] = i2c_read_byte(data[2]);
+		len = 1;
+		
+	} else if (data[1] == USBASP_FUNC_I2C_READ) {
+		i2c_address(data[2], I2C_READ);
+		prog_nbytes = (data[7] << 8) | data[6]; //Размер куска данных
+		prog_state = PROG_STATE_I2C_READ;
+		len = USB_NO_MSG;
+
+	} else if (data[1] == USBASP_FUNC_I2C_WRITE) {
+		i2c_start();
+		i2c_address(data[2], I2C_WRITE); //Адрес устройства
+		i2c_stop_aw = data[4]; //Команда стоп(1) или старт(0)
+		prog_nbytes = (data[7] << 8) | data[6]; //Размер куска данных
+		prog_state = PROG_STATE_I2C_WRITE;
+		len = USB_NO_MSG;
+		
+//microwire 93xx ---------------------------------------------------------		
+
+	} else if (data[1] == USBASP_FUNC_MW_WRITE) {
+		CS_HI();
+		mw_cs_lo = data[2];
+		
+		//data[4] lo(index)= сколько бит передавать
+		mw_bitnum = data[4];
+	
+		prog_nbytes = (data[7] << 8) | data[6]; //Размер куска данных
+		prog_state = PROG_STATE_MW_WRITE;
+		len = USB_NO_MSG;
+		
+	} else if (data[1] == USBASP_FUNC_MW_READ) {
+		mw_cs_lo = data[2];
+		
+		prog_nbytes = (data[7] << 8) | data[6]; //Размер куска данных
+		prog_state = PROG_STATE_MW_READ;
+		len = USB_NO_MSG;
+	
+			
+	} else if (data[1] == USBASP_FUNC_MW_BUSY) {
+		if (mwBusy() == 1) 
+		{
+			replyBuffer[0] = 1; //Линия занята
+		}
+		else
+		{
+			replyBuffer[0] = 0; 
+		}
+		
+		len = 1;
+		
+//------------------------------------------------------------------------
+	
 	} else if (data[1] == USBASP_FUNC_DISCONNECT) {
 		ispDisconnect();
 		ledRedOff();
@@ -90,6 +197,26 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 
 	} else if (data[1] == USBASP_FUNC_ENABLEPROG) {
 		replyBuffer[0] = ispEnterProgrammingMode();
+		
+		#ifdef AVR_SPI_SPEED_SEARCH 
+		if (replyBuffer[0] != 0){ //target don't answer
+			uint8_t i, speed;
+			
+			if (prog_sck == USBASP_ISP_SCK_AUTO)
+				speed = USBASP_ISP_SCK_187_5;
+			else
+				speed = prog_sck-1;
+			//trying lower speeds		
+			for (i = speed; i >= USBASP_ISP_SCK_2; i--){
+				ispSetSCKOption(i);
+				replyBuffer[0] = ispEnterProgrammingMode();
+				if (replyBuffer[0] == 0){
+					ispSetSCKOption(i-1);
+					break; 
+				}	
+			}
+		}
+		#endif
 		len = 1;
 
 	} else if (data[1] == USBASP_FUNC_WRITEFLASH) {
@@ -188,9 +315,7 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 		prog_state = PROG_STATE_TPI_WRITE;
 		len = USB_NO_MSG; /* multiple out */
 	
-	} 
-	// UART from now on:
-	else if(data[1]==USBASP_FUNC_UART_CONFIG){
+	}	else if(data[1]==USBASP_FUNC_UART_CONFIG){
 		uint16_t baud=(data[3]<<8)|data[2];
 		uint8_t par  = data[4] & USBASP_UART_PARITY_MASK;
 		uint8_t stop = data[4] & USBASP_UART_STOP_MASK;
@@ -223,10 +348,10 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 		len=2;
 	}
 	else if (data[1] == USBASP_FUNC_GETCAPABILITIES) {
-		replyBuffer[0] = USBASP_CAP_0_TPI|USBASP_CAP_6_UART;
+		replyBuffer[0] = USBASP_CAP_0_TPI|USBASP_CAP_6_UART; // TODO: check for issues
 		replyBuffer[1] = 0;
 		replyBuffer[2] = 0;
-		replyBuffer[3] = 0;
+		replyBuffer[3] = USBASP_CAP_3_FLASH; // TODO: check for issues
 		len = 4;
 	}
 
@@ -240,28 +365,96 @@ uchar usbFunctionRead(uchar *data, uchar len) {
 	uchar i;
 
 	/* check if programmer is in correct read state */
-	if (
-			(prog_state != PROG_STATE_READFLASH) && 
-			(prog_state	!= PROG_STATE_READEEPROM) && 
-			(prog_state != PROG_STATE_TPI_READ) &&
-			(prog_state != PROG_STATE_UART_RX)
-	) {
+	if ((prog_state != PROG_STATE_READFLASH) && (prog_state
+			!= PROG_STATE_READEEPROM) && (prog_state != PROG_STATE_TPI_READ) &&
+			(prog_state != PROG_STATE_UART_RX) &&
+			(prog_state != PROG_STATE_SPI_READ) && (prog_state != PROG_STATE_MW_READ) && (prog_state != PROG_STATE_I2C_READ)) {
 		return 0xff;
 	}
-
-	if(prog_state==PROG_STATE_UART_RX){
-		for(uint8_t rd=0; rd<len; rd++){
-			if(!uart_getc(data+rd)){
-				len=rd; // Emptied whole buffer.
+	
+	// TODO: Improve to be consistent
+	if(prog_state == PROG_STATE_UART_RX)
+	{
+		if(len > prog_nbytes) 
+			len = prog_nbytes;
+		for (i = 0; i < len; i++)
+		{
+			if(!uart_getc(data+i)){
+				len = i; // Emptied whole buffer.
 				break;
 			}
 		}
-		if(len<8){
-			prog_state=PROG_STATE_IDLE;
+		if(len < 8)
+		{
+			prog_state = PROG_STATE_IDLE;
 		}
 		return len; // Whole data buffer written.
 	}
 
+	if(prog_state == PROG_STATE_SPI_READ)
+	{
+		if(len > prog_nbytes)
+		len = prog_nbytes;
+		
+		for (i = 0; i < len; i++)
+		{
+			data[i] = ispTransmit(0);
+			prog_nbytes -= 1;
+		}
+		
+		if(prog_nbytes <= 0)
+		{
+			if (spi_cs_hi) CS_HI();
+			prog_state = PROG_STATE_IDLE;
+		}
+
+		return len;
+	}
+
+	if(prog_state == PROG_STATE_I2C_READ)
+	{
+		if(len > prog_nbytes) 
+			len = prog_nbytes;
+		
+		for (i = 0; i < len; i++)
+		{
+			prog_nbytes -= 1;
+			
+			if (prog_nbytes == 0)
+			{
+				data[i] = i2c_read_byte(I2C_NACK);
+				i2c_stop();
+				prog_state = PROG_STATE_IDLE;				
+			}
+			else
+			{
+				data[i] = i2c_read_byte(I2C_ACK);	
+			}
+		}
+		
+		return len;
+	}
+	
+	if(prog_state == PROG_STATE_MW_READ)
+	{
+		if(len > prog_nbytes)
+			len = prog_nbytes;
+		
+		for (i = 0; i < len; i++)
+		{
+			data[i] = mwReadByte();
+			prog_nbytes -= 1;
+		}
+		
+		if(prog_nbytes <= 0)
+		{
+			if(mw_cs_lo) mwEnd();
+			prog_state = PROG_STATE_IDLE;
+		}
+
+		return len;
+	}
+	
 	/* fill packet TPI mode */
 	if(prog_state == PROG_STATE_TPI_READ)
 	{
@@ -289,7 +482,7 @@ uchar usbFunctionRead(uchar *data, uchar len) {
 }
 
 uchar usbFunctionWrite(uchar *data, uchar len) {
-	if(prog_state==PROG_STATE_UART_TX){
+	if(prog_state == PROG_STATE_UART_TX){
 		if(len){
 			uart_putsn(data, len);
 			// This function should succeed, since computer should
@@ -297,9 +490,9 @@ uchar usbFunctionWrite(uchar *data, uchar len) {
 			// return anything.
 		}
 
-		prog_nbytes-=len;
-		if(prog_nbytes<=0){
-			prog_state=PROG_STATE_IDLE;
+		prog_nbytes -= len;
+		if(prog_nbytes <= 0){
+			prog_state = PROG_STATE_IDLE;
 			return 1;
 		}
 		return 0;
@@ -311,15 +504,89 @@ uchar usbFunctionWrite(uchar *data, uchar len) {
 	/* check if programmer is in correct write state */
 	// Note: this is done after checking for UART_TX, because we want
 	// super small delay here.
-	if (
-			(prog_state != PROG_STATE_WRITEFLASH) && 
-			(prog_state	!= PROG_STATE_WRITEEEPROM) &&
-		   	(prog_state != PROG_STATE_TPI_WRITE)
-	) {
+	if ((prog_state != PROG_STATE_WRITEFLASH) && (prog_state
+			!= PROG_STATE_WRITEEEPROM) && (prog_state != PROG_STATE_TPI_WRITE) &&
+				(prog_state != PROG_STATE_SPI_WRITE) && (prog_state != PROG_STATE_MW_WRITE) && (prog_state != PROG_STATE_I2C_WRITE)) {
 		return 0xff;
 	}
 
+	if (prog_state == PROG_STATE_I2C_WRITE)
+	{
+		if(len > prog_nbytes)
+		    len = prog_nbytes;
 
+		for (i = 0; i < len; i++)
+		{
+			i2c_send_byte(data[i]);
+			prog_nbytes -= 1;
+		}
+		
+		if(prog_nbytes <= 0)
+		{
+			if(i2c_stop_aw == 1) i2c_stop();
+			  else i2c_start();
+			  
+			prog_state = PROG_STATE_IDLE;
+			return 1;
+		}
+
+		return 0;
+	}
+
+	if (prog_state == PROG_STATE_SPI_WRITE)
+	{
+		if(len > prog_nbytes)
+		    len = prog_nbytes;
+
+		for (i = 0; i < len; i++) 
+		{
+			ispTransmit(data[i]);
+			prog_nbytes -= 1;
+		}
+		
+		if(prog_nbytes <= 0)
+		{
+			if (spi_cs_hi) CS_HI();
+			return 1;
+		}
+
+		return 0;
+	}
+
+	if (prog_state == PROG_STATE_MW_WRITE)
+	{
+		if(len > prog_nbytes)
+		    len = prog_nbytes;
+
+		for (i = 0; i < len; i++)
+		{
+			//Пишем биты
+			if(mw_bitnum > 0){
+				if(mw_bitnum < 8)
+				{
+					mwSendData(data[i], mw_bitnum);
+					mw_bitnum = 0;
+				}
+				else
+				{ 
+					mwSendData(data[i], 8);
+					mw_bitnum -= 8;	
+				}
+			}
+				
+			prog_nbytes -= 1;
+		}
+			
+		if(prog_nbytes <= 0)
+		{
+			if(mw_cs_lo) mwEnd();
+			prog_state = PROG_STATE_IDLE;
+			return 1;
+		}
+
+		return 0;
+	}
+		
 	if (prog_state == PROG_STATE_TPI_WRITE)
 	{
 		tpi_write_block(prog_address, data, len);
@@ -376,17 +643,18 @@ uchar usbFunctionWrite(uchar *data, uchar len) {
 	return retVal;
 }
 
+
 int main(void) {
 	uchar i, j;
 
 	/* no pullups on USB and ISP pins */
 	PORTD = 0;
 	PORTB = 0;
+	
 	/* all outputs except PD2 = INT0 */
 	DDRD = ~(1 << 2);
-
 	PORTD |= (1<<0); // pullup on Rx pin.
-	DDRD &= ~(1<<0); // Rx as input too.
+	DDRD &= ~(1<<0); // Rx as input too.[m
 
 	/* output SE0 for USB reset */
 	DDRB = ~0;
@@ -443,6 +711,7 @@ int main(void) {
 	}
 #endif*/
 
+	//ledGreenOn();[m
 	sei();
 	for (;;) {
 		usbPoll();

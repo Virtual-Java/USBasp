@@ -18,6 +18,7 @@ LFUSE=0xef
 # ISP=usbasp   PORT=/dev/usb/ttyUSB0
 # ISP=stk500v2 PORT=/dev/ttyUSB0
 # ISP=avrisp   PORT=/dev/ttyArduino -b 19200
+# ISP=usbasp   PORT=/dev/usb/ttyUSB0
 ISP=usbasp
 PORT=/dev/ttyUSB0 -b 19200
 
@@ -42,16 +43,16 @@ all: main.hex
 	@echo "-mmcu=$(TARGET) -I/usr/lib/avr/include -D__AVR_ATmega8__"
 	make flash
 
-COMPILE = avr-gcc -Wall -O2 -std=c99 -Iusbdrv -I. -mmcu=$(TARGET) # -DDEBUG_LEVEL=2
+COMPILE = avr-gcc -Wall -Os -Iusbdrv -I. -mmcu=$(TARGET) # -DDEBUG_LEVEL=2
 
-OBJECTS = usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o isp.o clock.o tpi.o main.o uart.o
+OBJECTS = usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o isp.o clock.o tpi.o main.o uart.o i2c.o microwire.o
 
 flags_c:
 	@echo "-mmcu=$(TARGET) -I/usr/lib/avr/include -D__AVR_ATmega8__"
 
-COMPILE = avr-gcc -Wall -O2 -std=c99 -Iusbdrv -I. -mmcu=$(TARGET) # -DDEBUG_LEVEL=2
+COMPILE = avr-gcc -Wall -Os -Iusbdrv -I. -mmcu=$(TARGET) # -DDEBUG_LEVEL=2
 
-OBJECTS = usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o isp.o clock.o tpi.o main.o uart.o
+OBJECTS = usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o isp.o clock.o tpi.o main.o uart.o i2c.o microwire.o
 
 .c.o:
 	$(COMPILE) -c $< -o $@

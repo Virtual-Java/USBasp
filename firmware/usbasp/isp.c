@@ -37,7 +37,11 @@ void ispSetSCKOption(uchar option) {
 		sck_sw_delay = 1;	/* force RST#/SCK pulse for 320us */
 
 		switch (option) {
-
+		// Test this speed with usbasp-uart (from usbasp-flash)
+		case USBASP_ISP_SCK_3000:
+			/* enable SPI, master, 3MHz, XTAL/4 */
+			sck_spcr = (1 << SPE) | (1 << MSTR);
+			break;
 		case USBASP_ISP_SCK_1500:
 			/* enable SPI, master, 1.5MHz, XTAL/8 */
 			sck_spcr = (1 << SPE) | (1 << MSTR) | (1 << SPR0);
@@ -129,6 +133,18 @@ void ispConnect() {
 	isp_hiaddr = 0;
 }
 
+void isp25Connect() {
+	/* all ISP pins are inputs before */
+	/* now set output pins */
+	ISP_DDR |= (1 << ISP_RST) | (1 << ISP_SCK) | (1 << ISP_MOSI);
+	
+	if (ispTransmit == ispTransmit_hw) {
+		spiHWenable();
+	}
+	
+	CS_HI();
+}
+
 void ispDisconnect() {
 
 	/* set all ISP pins inputs */
@@ -140,15 +156,15 @@ void ispDisconnect() {
 	spiHWdisable();
 }
 
-// not used anymore
+/* not used anymore
 void spiInit() {
-	/* Set MISO output, all others input */
+	// Set MISO output, all others input
 	ISP_DDR = (1 << ISP_MISO);
-	/* Pull up SS' */
+	// Pull up SS'
 	ISP_OUT = (1 << ISP_RST);
-	/* Enable SPI, slave mode */
+	// Enable SPI, slave mode
 	SPCR = (1 << SPE | 1<< SPIE);
-}
+}*/
 
 uchar ispTransmit_sw(uchar send_byte) {
 

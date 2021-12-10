@@ -218,3 +218,10 @@ makes strange things. For example, for baud 250000, I have now speed 14.0kB/s. I
 possible - 1.5MB/s - I can squeeze up to 15kB/s through the USB. Going down to 125000, we get throughput of 10.3kB/s - 
 but that decrease is not that surprising, given that UART's speed itself at that baud is just 12.5kB/s and there has to
 be some slowdown on the wires.
+
+# UsbAsp-flash
+Альтернативная прошивка  и программа для UsbAsp позволяющая программировать флеш память по протоколам SPI, I2C, MicroWire.
+Для обсуждение используйте github https://github.com/nofeletru/UsbAsp-flash/discussions
+
+Alternative firmware and software for USBasp that allows you to program flash memory using SPI, I2C and MicroWire protocols.
+For discussion please use https://github.com/nofeletru/UsbAsp-flash/discussions
