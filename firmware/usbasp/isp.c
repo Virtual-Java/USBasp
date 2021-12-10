@@ -140,6 +140,7 @@ void ispDisconnect() {
 	spiHWdisable();
 }
 
+// not used anymore
 void spiInit() {
 	/* Set MISO output, all others input */
 	ISP_DDR = (1 << ISP_MISO);

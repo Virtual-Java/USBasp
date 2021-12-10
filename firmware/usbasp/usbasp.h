@@ -12,6 +12,7 @@
 #define USBASP_H_
 
 /* USB function call identifiers */
+// SPI:
 #define USBASP_FUNC_CONNECT     1
 #define USBASP_FUNC_DISCONNECT  2
 #define USBASP_FUNC_TRANSMIT    3
@@ -22,20 +23,30 @@
 #define USBASP_FUNC_WRITEEEPROM 8
 #define USBASP_FUNC_SETLONGADDRESS 9
 #define USBASP_FUNC_SETISPSCK 10
+// TPI:
 #define USBASP_FUNC_TPI_CONNECT      11
 #define USBASP_FUNC_TPI_DISCONNECT   12
 #define USBASP_FUNC_TPI_RAWREAD      13
 #define USBASP_FUNC_TPI_RAWWRITE     14
 #define USBASP_FUNC_TPI_READBLOCK    15
 #define USBASP_FUNC_TPI_WRITEBLOCK   16
-#define USBASP_FUNC_GETCAPABILITIES 127
+// UART:
+#define USBASP_FUNC_UART_CONFIG  60
+#define USBASP_FUNC_UART_FLUSHTX 61
+#define USBASP_FUNC_UART_FLUSHRX 62
+#define USBASP_FUNC_UART_DISABLE 63
+#define USBASP_FUNC_UART_TX      64
+#define USBASP_FUNC_UART_RX      65
+#define USBASP_FUNC_UART_TX_FREE 66
+#define USBASP_FUNC_UART_RX_FREE 67
 
-#define USBASP_FUNC_SPI_RECVSTART 32
-#define USBASP_FUNC_SPI_RECV 33
-#define USBASP_FUNC_SPI_RECVSTOP 34
+
+// Other:
+#define USBASP_FUNC_GETCAPABILITIES 127
 
 /* USBASP capabilities */
 #define USBASP_CAP_0_TPI    0x01
+#define USBASP_CAP_6_UART   (1U<<6)
 
 /* programming state */
 #define PROG_STATE_IDLE         0
@@ -45,7 +56,8 @@
 #define PROG_STATE_WRITEEEPROM  4
 #define PROG_STATE_TPI_READ     5
 #define PROG_STATE_TPI_WRITE    6
-#define PROG_STATE_SERIAL       7
+#define PROG_STATE_UART_TX      60
+#define PROG_STATE_UART_RX      61
 
 /* Block mode flags */
 #define PROG_BLOCKFLAG_FIRST    1
@@ -66,19 +78,28 @@
 #define USBASP_ISP_SCK_750    11  /* 750 kHz   */
 #define USBASP_ISP_SCK_1500   12  /* 1.5 MHz   */
 
+// UART flags.
+#define USBASP_UART_PARITY_MASK 0b11
+#define USBASP_UART_PARITY_NONE 0b00
+#define USBASP_UART_PARITY_EVEN 0b01
+#define USBASP_UART_PARITY_ODD  0b10
+
+#define USBASP_UART_STOP_MASK   0b100
+#define USBASP_UART_STOP_1BIT   0b000
+#define USBASP_UART_STOP_2BIT   0b100
+
+#define USBASP_UART_BYTES_MASK  0b111000
+#define USBASP_UART_BYTES_5B    0b000000
+#define USBASP_UART_BYTES_6B    0b001000
+#define USBASP_UART_BYTES_7B    0b010000
+#define USBASP_UART_BYTES_8B    0b011000
+#define USBASP_UART_BYTES_9B    0b100000
+
+
 /* macros for gpio functions */
 #define ledRedOn()    PORTC &= ~(1 << PC1)
 #define ledRedOff()   PORTC |= (1 << PC1)
 #define ledGreenOn()  PORTC &= ~(1 << PC0)
 #define ledGreenOff() PORTC |= (1 << PC0)
-
-#define isLedRedOff()   (PORTC & (1 << PC1))
-#define isLedRedOn()    ~(isLedRedOff())
-#define isLedGreenOff() (PORTC & (1 << PC0))
-#define isLedGreenOn()  ~(isLedGreenOff())
-
-#define toggleLedRed()  PORTC ^= (1 << PC1)
-#define toggleLedGreen()  PORTC ^= (1 << PC0)
-
 
 #endif /* USBASP_H_ */

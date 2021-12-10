@@ -30,6 +30,7 @@ void ispConnect();
 /* Close connection to target device */
 void ispDisconnect();
 
+// not used anymore
 /* Prepare to listen to target device */
 void spiInit();
 
