@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "../firmware/usbasp.h"
+#include "../firmware/usbasp/usbasp.h"
 
 #include <libusb-1.0/libusb.h>
 
